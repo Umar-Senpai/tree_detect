@@ -1,0 +1,6 @@
+detect_node:
+  ros__parameters:
+    points_topic: "/tree_points"
+    cylinder_topic: "/tree_trunks"
+    robot_vis_topic: "/robot_cov"
+    landmark_vis_topic: "/landmarks"

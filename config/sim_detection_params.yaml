@@ -1,0 +1,21 @@
+detect_node:
+  ros__parameters:
+    fx_rgb: 1131.2017905548394
+    fy_rgb: 1131.2017905548394  
+    cx_rgb: 640.5
+    cy_rgb: 400.5
+
+    fx_depth: 1131.2017905548394
+    fy_depth: 1131.2017905548394 
+    cx_depth: 640.5
+    cy_depth: 400.5
+
+    detection_confidence: 0.9 # Accepted detection confidence from the DL model
+    sampling_t: 0.1           # Sampling time for computing keypoints
+    maximum_depth: 10000.0    # Maximum Depth in mm
+    below_cam_th: 1.1         # Maximum distance along the camera's y axis a 3D point can have
+    inclination_th: 10        # Inlcination threshold for discarding misdetected trees with too much inclination (degrees)
+
+    rgb_topic: "/tractor_nh_t4_110f/oakd_camera/image_raw/compressed"
+    depth_topic: "/tractor_nh_t4_110f/oakd_camera/depth/image_raw"
+    measurement_topic: "/tree_scan"

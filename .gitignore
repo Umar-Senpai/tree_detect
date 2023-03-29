@@ -1,0 +1,6 @@
+build/
+bags/
+.vscode/
+PercepTreeV1/
+MODELS/
+*pyc

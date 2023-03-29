@@ -1,0 +1,18 @@
+fx_rgb: 608.974853515625
+fy_rgb: 608.5889892578125
+cx_rgb: 321.0885925292969
+cy_rgb: 247.14877319335938
+
+fx_depth: 431.44268798828125
+fy_depth: 431.44268798828125
+cx_depth: 426.41888427734375
+cy_depth: 237.1323699951172
+
+detection_confidence: 0.9
+sampling_t: 0.1
+maximum_depth: 10000.0 # Maximum Depth in mm
+below_cam_th: 0.3      # Maximum distance along the camera's y axis a 3D point can have
+inclination_th: 10     # Inlcination threshold for discarding misdetected trees with too much inclination (degrees)
+
+rgb_topic: "/camera/color/image_raw/compressed"
+depth_topic: "/camera/depth/image_rect_raw"

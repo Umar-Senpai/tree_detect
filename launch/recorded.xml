@@ -1,0 +1,6 @@
+<launch>
+    <!-- Display Bag Files -->
+    <arg name="rviz_conf" default="$(find tree_slam)/rviz/navigation.rviz"/>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock  $(find tree_slam)/bags/real.bag"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_conf)" />
+</launch>

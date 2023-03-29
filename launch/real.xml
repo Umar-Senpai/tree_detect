@@ -1,0 +1,23 @@
+<launch>
+    <!-- Set ROS parameters -->
+    <rosparam file="$(find tree_slam)/params/real_slam_params.yaml" />
+    <rosparam file="$(find tree_slam)/params/real_detection_params.yaml" />
+    <rosparam file="$(find tree_slam)/params/visualization_params.yaml" />
+
+    <!-- Set custom arguments -->
+    <arg name="node_start_delay" default="10.0" />  
+    <arg name="display_keypoints" default="True" />  
+    <arg name="display_markers" default="False" />
+    <arg name="rviz_config_file" default="real_config.rviz" />  
+
+
+    <!-- Start SLAM Nodes -->
+    <node pkg="tree_slam" type="detect_node.py" name="detect_node" output="screen" args="$(arg display_keypoints) $(arg display_markers)"/>
+    <node pkg="tree_slam" type="slam_node.py" name="slam_node" output="screen"/>
+
+    <!-- Display Bag Files -->
+    <arg name="rviz_conf" default="$(find tree_slam)/rviz/navigation.rviz"/>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock  $(find tree_slam)/bags/real.bag" launch-prefix="bash -c 'sleep $(arg node_start_delay); $0 $@' "/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find tree_slam)/rviz/$(arg rviz_config_file)"/>
+
+</launch>
