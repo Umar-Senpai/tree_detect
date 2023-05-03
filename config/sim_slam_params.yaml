@@ -1,12 +1,14 @@
-mahalanobis_threshold: 1.5   # Threshold of Mahalanobis distance for data association best: 12
-max_landmarks: 20           # Maximum number of landmarks allowed by the SLAM algoirthm
-robot_state_size: 3         # State size for the DoF of the robot
-landmark_state_size: 2      # State size for the given landmarks (2) for a 2D scenario
+slam_node:
+  ros__parameters:
+    mahalanobis_threshold: 1.5   # Threshold of Mahalanobis distance for data association best: 12
+    max_landmarks: 20           # Maximum number of landmarks allowed by the SLAM algoirthm
+    robot_state_size: 3         # State size for the DoF of the robot
+    landmark_state_size: 2      # State size for the given landmarks (2) for a 2D scenario
 
-motion_sigma_v: 0.225         # Uncertainty in the motion linear speed (m/s)
-motion_sigma_w: 10.0         # Uncertainty in the motion angular speed (rad/s)
-measurement_sigma_r: 0.06   # Uncertainty in the measurement range (degrees) best 0.05
-measurement_sigma_a: 1.0    # Uncertainty in the measurement angle (degrees)
+    motion_sigma_v: 0.225         # Uncertainty in the motion linear speed (m/s)
+    motion_sigma_w: 10.0         # Uncertainty in the motion angular speed (rad/s)
+    measurement_sigma_r: 0.06   # Uncertainty in the measurement range (degrees) best 0.05
+    measurement_sigma_a: 1.0    # Uncertainty in the measurement angle (degrees)
 
-odometry_topic: "/odom"     # Topic form where the odometry is coming
-measurement_topic: "/tree_scan" # Topic form where the scan is coming (range, angle)
+    odometry_topic: "/tractor_nh_t4_110f/odom"     # Topic form where the odometry is coming
+    measurement_topic: "/tree_scan" # Topic form where the scan is coming (range, angle)

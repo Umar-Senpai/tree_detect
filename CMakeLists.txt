@@ -53,11 +53,21 @@ install(
 install(
   PROGRAMS
   scripts/FRONTEND/detect_node.py
+  scripts/FRONTEND/detect_node_openvino.py
   scripts/FRONTEND/detector.py
+  scripts/FRONTEND/detector_openvino.py
   scripts/FRONTEND/measurement3d_2d.py
+  scripts/BACKEND/slam_node.py
+  scripts/BACKEND/EKF.py
+  scripts/BACKEND/RangeBearing.py
+  scripts/BACKEND/robot.py
   scripts/UTILS/visualize.py
+  scripts/UTILS/visualize_slam.py
   scripts/MODELS/R-50_RGB_60k.pth
   scripts/MODELS/ResNext-101_fold_01.pth
+  scripts/MODELS/model.bin
+  scripts/MODELS/model.xml
+  scripts/MODELS/model.onnx
   DESTINATION lib/${PROJECT_NAME}
 )
 

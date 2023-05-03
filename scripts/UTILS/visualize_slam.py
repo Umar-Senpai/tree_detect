@@ -11,7 +11,7 @@ from tf_transformations import quaternion_matrix, quaternion_about_axis
 class visualize(Node):
 
     def __init__(self):
-        super().__init__('tree_detect_visualize')
+        super().__init__('slam_visualize')
         self.frame_id = "odom"
 
         self.points_topic = str(self.declare_parameter("points_topic").value)
@@ -29,7 +29,7 @@ class visualize(Node):
         self.origin, self.xaxis, self.yaxis, self.zaxis = (0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)
 
         self.marker_array = MarkerArray()
-        
+
     def reset_ids(self):
         self.id_cyl = 0
         self.id_pt = 0
@@ -74,7 +74,7 @@ class visualize(Node):
         marker.header.stamp = self.get_clock().now().to_msg()
 
         # set shape, Arrow: 0; Cube: 1 ; Sphere: 2 ; Cylinder: 3
-        marker.type = 2
+        marker.type = 3
         marker.id = self.id_pt
 
         # Set the scale of the marker

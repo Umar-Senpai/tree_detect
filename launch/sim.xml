@@ -11,11 +11,14 @@
     <arg name="rviz_config_file" default="sim_config.rviz" />  
 
     <!-- Start SLAM Nodes -->
-    <node pkg="tree_detect" exec="detect_node.py" name="detect_node" output="screen" args="$(var display_keypoints) $(var display_markers)" >
+    <node pkg="tree_detect" exec="detect_node_openvino.py" name="detect_node" output="screen" args="$(var display_keypoints) $(var display_markers)" >
         <param from="$(find-pkg-share tree_detect)/config/sim_detection_params.yaml"/>
         <param from="$(find-pkg-share tree_detect)/config/visualization_params.yaml"/>
     </node>
-    <!-- <node pkg="tree_detect" type="slam_node.py" name="slam_node" output="screen"/> -->
+    <!-- <node pkg="tree_detect" exec="slam_node.py" name="slam_node" output="screen">
+        <param from="$(find-pkg-share tree_detect)/config/sim_slam_params.yaml"/>
+        <param from="$(find-pkg-share tree_detect)/config/visualization_params_slam.yaml"/>
+    </node> -->
 
     <!-- Display Bag Files -->
     <!-- <arg name="rviz_conf" default="$(find-pkg-share tree_detect)/rviz/navigation.rviz"/>
