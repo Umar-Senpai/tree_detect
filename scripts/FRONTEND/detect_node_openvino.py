@@ -115,6 +115,9 @@ class DetectionNode_OpenVino(Node):
         self.path = []
         self.y_dict = {}
         self.pursuit_path = []
+        self.no_detection_count = 0
+        self.change_lane = False
+        self.prev_path = []
 
     def rgb_callback(self, data): # COMPLETED
         '''
@@ -261,15 +264,33 @@ class DetectionNode_OpenVino(Node):
                 self.pursuit_path.append(point)
 
         self.pursuit_path.sort(key=lambda x: x[1])
+        
         # self.pursuit_path = np.array(self.pursuit_path)
         self.i = 0
         twist = Twist()
         if len(self.pursuit_path) > 0:
+            self.no_detection_count = 0
             twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.pursuit_path,self.i)
-            if(abs(self.x - self.path[-1][0]) < 0.05 and abs(self.y - self.path[-1][1])< 0.05):
+            if(abs(self.x - self.pursuit_path[-1][0]) < 0.05 and abs(self.y - self.pursuit_path[-1][1])< 0.05):
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
             self.publisher.publish(twist)
+            self.prev_path = self.pursuit_path
+        else:
+            self.no_detection_count = self.no_detection_count + 1
+            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.prev_path,self.i)
+            if(abs(self.x - self.prev_path[-1][0]) < 0.05 and abs(self.y - self.prev_path[-1][1])< 0.05):
+                self.change_lane = True
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+            self.publisher.publish(twist)
+
+        if self.no_detection_count > 6 and self.change_lane == True:
+            twist = Twist()
+            twist.linear.x = 0.5
+            twist.angular.z = 1.0
+            self.publisher.publish(twist)
+
         if self.display_enabled:
             # Show estimated tree trunk keypoints
             self.show_keypoints(rgb_img, depth_img)
