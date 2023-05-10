@@ -8,6 +8,7 @@ import math
 import scipy.interpolate as si
 from rclpy.qos import QoSProfile
 
+### TAKEN FROM https://github.com/abdulkadrtr/ROS2-PurePursuitControl-PathPlanning-Tracking/blob/aeb781409319b062d852223755662f6d66c2431b/nav_controller/nav_controller/control.py#L109
 lookahead_distance = 1.15
 speed = 0.1
 expansion_size = 2 #for the wall
@@ -71,70 +72,3 @@ def costmap(data,width,height,resolution):
             data[x,y] = 100
     data = data*resolution
     return data
-
-class NavigationControl(Node):
-    def __init__(self):
-        super().__init__('Navigation')
-        self.subscription = self.create_subscription(OccupancyGrid,'map',self.listener_callback,10)
-        self.subscription = self.create_subscription(Odometry,'odom',self.info_callback,10)
-        self.subscription = self.create_subscription(PoseStamped,'goal_pose',self.goal_pose_callback,QoSProfile(depth=10))
-        self.publisher = self.create_publisher(Twist, 'cmd_vel', 10)
-        timer_period = 0.01
-        self.timer = self.create_timer(timer_period, self.timer_callback)
-        print("Hedef Bekleniyor...")
-        self.flag = 0
-
-    def goal_pose_callback(self,msg):
-        self.goal = (msg.pose.position.x,msg.pose.position.y)
-        print("Hedef Konumu: ",self.goal[0],self.goal[1])
-        self.flag = 1
-
-    def listener_callback(self,msg):
-        if self.flag == 1:
-            resolution = msg.info.resolution
-            originX = msg.info.origin.position.x
-            originY = msg.info.origin.position.y
-            column = int((self.x- originX)/resolution) #x,y koordinatlarından costmap indislerine çevirme
-            row = int((self.y- originY)/resolution) #x,y koordinatlarından costmap indislerine çevirme
-            columnH = int((self.goal[0]- originX)/resolution)#x,y koordinatlarından costmap indislerine çevirme
-            rowH = int((self.goal[1]- originY)/resolution)#x,y koordinatlarından costmap indislerine çevirme
-            data = costmap(msg.data,msg.info.width,msg.info.height,resolution) #costmap düzenleme
-            data[row][column] = 0 #robot konumu
-            data[data < 0] = 1 
-            data[data > 5] = 1 
-            path = astar(data,(row,column),(rowH,columnH)) #astar algoritması ile yol bulma
-            path = [(p[1]*resolution+originX,p[0]*resolution+originY) for p in path] #x,y koordinatlarına çevirme
-            self.path = bspline_planning(path,len(path)*5) #bspline ile düzeltme
-            print("Robot Konumu: ",self.x,self.y)
-            print("Hedefe ilerleniyor...")
-            self.i = 0
-            self.flag = 2
-
-    def timer_callback(self):
-        if self.flag == 2:
-            twist = Twist()
-            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.path,self.i)
-            if(abs(self.x - self.path[-1][0]) < 0.05 and abs(self.y - self.path[-1][1])< 0.05):
-                twist.linear.x = 0.0
-                twist.angular.z = 0.0
-                self.flag = 0
-                print("Hedefe Ulasildi.\n")
-                print("Yeni Hedef Bekleniyor..")
-            self.publisher.publish(twist)
-
-    def info_callback(self,msg):
-        self.x = msg.pose.pose.position.x
-        self.y = msg.pose.pose.position.y
-        self.yaw = euler_from_quaternion(msg.pose.pose.orientation.x,msg.pose.pose.orientation.y,
-        msg.pose.pose.orientation.z,msg.pose.pose.orientation.w)
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    navigation_control = NavigationControl()
-    rclpy.spin(navigation_control)
-    navigation_control.destroy_node()
-    rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()

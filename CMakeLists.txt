@@ -57,6 +57,7 @@ install(
   scripts/FRONTEND/detector.py
   scripts/FRONTEND/detector_openvino.py
   scripts/FRONTEND/measurement3d_2d.py
+  scripts/FRONTEND/pure_pursuit.py
   scripts/BACKEND/slam_node.py
   scripts/BACKEND/EKF.py
   scripts/BACKEND/RangeBearing.py

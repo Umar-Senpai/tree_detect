@@ -15,6 +15,7 @@ detect_node:
     maximum_depth: 10000.0    # Maximum Depth in mm
     below_cam_th: 1.1         # Maximum distance along the camera's y axis a 3D point can have
     inclination_th: 10        # Inlcination threshold for discarding misdetected trees with too much inclination (degrees)
+    dist_rows: 3.0            # Distance between rows horizontally
 
     rgb_topic: "/tractor_nh_t4_110f/oakd_camera/image_raw/compressed"
     depth_topic: "/tractor_nh_t4_110f/oakd_camera/depth/image_raw"

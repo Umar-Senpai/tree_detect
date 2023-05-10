@@ -9,14 +9,15 @@ from detector_openvino import detection_model_openvino
 from std_msgs.msg import String
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Image, CompressedImage
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from cv_bridge import CvBridge, CvBridgeError
 from measurement3d_2d import compute_line, compute_projected_point, compute_measurements
 from tf_transformations import euler_from_matrix
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros.buffer import Buffer
 from tf_transformations import quaternion_matrix, quaternion_about_axis
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
+from pure_pursuit import pure_pursuit
 
  
 # Importing Visualization UTILS
@@ -53,6 +54,7 @@ class DetectionNode_OpenVino(Node):
         self.maximum_depth = float(self.declare_parameter("maximum_depth").value)
         self.below_cam_th = float(self.declare_parameter("below_cam_th").value)
         self.inclination_th = np.deg2rad(float(self.declare_parameter("inclination_th").value))
+        self.dist_rows = float(self.declare_parameter("dist_rows").value)
 
         # Define machine learning model for detecting tree trunks
         self.DL_MODEL = detection_model_openvino(model_name, confidence)
@@ -73,6 +75,7 @@ class DetectionNode_OpenVino(Node):
         self.rgb_detection_pub = self.create_publisher(Image, "/rgb_keypoints", 1)
         self.depth_detection_pub = self.create_publisher(Image, "/depth_keypoints", 1)
         self.publisher = self.create_publisher(Twist, '/tractor_nh_t4_110f/cmd_vel', 10)
+        self.path_pub = self.create_publisher(Path, '/pursuit_path', 1)
         self.visualizer = visualize()
 
         # Image Storage
@@ -111,6 +114,7 @@ class DetectionNode_OpenVino(Node):
         self.counter = 0
         self.path = []
         self.y_dict = {}
+        self.pursuit_path = []
 
     def rgb_callback(self, data): # COMPLETED
         '''
@@ -134,7 +138,7 @@ class DetectionNode_OpenVino(Node):
         except CvBridgeError as e:
             print(e)
 
-    def info_callback(self,msg):
+    def info_callback(self, msg):
         self.x = msg.pose.pose.position.x
         self.y = msg.pose.pose.position.y
         self.yaw = euler_from_quaternion(msg.pose.pose.orientation.x,msg.pose.pose.orientation.y,
@@ -162,8 +166,9 @@ class DetectionNode_OpenVino(Node):
         if self.counter == 5:
             # self.visualizer.reset_ids()
             self.counter = 0
-            self.y_dict = {}
+        self.y_dict = {}
         
+        self.pursuit_path = []
         self.path = []
         self.counter = self.counter + 1
         for instance in outputs_pred:
@@ -210,22 +215,27 @@ class DetectionNode_OpenVino(Node):
                         self.measurement_pub.publish(self.measurement_msg)
 
                         point = self.distance_angle_to_world(distance, angle)
-                        rounded_dist = round(point[1])
-                        print('self.y_dict', self.y_dict)
+                        self.path.append(point + [self.dist_rows / 2.0, 0.0, 0.0])
+                        self.path.append(point - [self.dist_rows / 2.0, 0.0, 0.0])
+                        rounded_dist = math.floor(point[1])
                         if rounded_dist not in self.y_dict:
                             self.y_dict[rounded_dist] = np.array([point])
                         else:
                             if all(abs(self.y_dict[rounded_dist][:, 0] - point[0]) > 0.2):
-                                print("HERE")
                                 for stored_point in self.y_dict[rounded_dist]:
-                                    if abs(stored_point[0] - point[0]) < 3.0:
-                                        new_path = (stored_point + point) / 2 
-                                        print('new_path', new_path)
-                                        self.path.append(new_path)
+                                    if abs(stored_point[0] - point[0]) < self.dist_rows:
+                                        new_path = (stored_point + point) / 2
+                                        np_path = np.array(self.path)
+                                        distances = np.linalg.norm(np_path - new_path, axis=1)
+                                        min_index = np.argmin(distances)
+                                        if distances[min_index] < 1.0: 
+                                            self.path[min_index] = new_path
+                                        else:
+                                            self.path.append(new_path)
                                 self.y_dict[rounded_dist] = np.vstack((self.y_dict[rounded_dist], point))
                             # new_path = np.mean(self.y_dict[rounded_dist], axis=0)
                             # print('new_path', new_path)
-                            # if new_path[0] < 3.0:
+                            # if new_path[0] < self.dist_rows:
                             #     self.path.append(new_path)
                         # if distance < min_dist2:
                         #     if distance < min_dist1:
@@ -243,15 +253,19 @@ class DetectionNode_OpenVino(Node):
         self.final_path = np.array(self.path)
         # self.path = np.array([[0.0, 6.0, 0.0]])
         # if (p1[1] - p2[1]) < 0.1:
-        print('self.final_path', self.final_path)
+        # print('self.final_path', self.final_path)
         for point in self.final_path:
             self.visualizer.draw_point(np.array([point]).T)
+            abs_dist = abs(point[0] - self.x)
+            if abs_dist < self.dist_rows / 2.0:
+                self.pursuit_path.append(point)
 
-
+        self.pursuit_path.sort(key=lambda x: x[1])
+        # self.pursuit_path = np.array(self.pursuit_path)
         self.i = 0
         twist = Twist()
-        if len(self.final_path) > 0:
-            twist.linear.x , twist.angular.z,self.i = self.pure_pursuit(self.x,self.y,self.yaw,self.final_path,self.i)
+        if len(self.pursuit_path) > 0:
+            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.pursuit_path,self.i)
             if(abs(self.x - self.path[-1][0]) < 0.05 and abs(self.y - self.path[-1][1])< 0.05):
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
@@ -259,35 +273,7 @@ class DetectionNode_OpenVino(Node):
         if self.display_enabled:
             # Show estimated tree trunk keypoints
             self.show_keypoints(rgb_img, depth_img)
-
-    def pure_pursuit(self, current_x, current_y, current_heading, path,index):
-        lookahead_distance = 1.0
-        closest_point = None
-        v = 0.1
-        for i in range(index,len(path)):
-            x = path[i][0]
-            y = path[i][1]
-            distance = math.hypot(current_x - x, current_y - y)
-            if lookahead_distance < distance:
-                closest_point = (x, y)
-                index = i
-                break
-        if closest_point is not None:
-            target_heading = math.atan2(closest_point[1] - current_y, closest_point[0] - current_x)
-            desired_steering_angle = target_heading - current_heading
-        else:
-            target_heading = math.atan2(path[-1][1] - current_y, path[-1][0] - current_x)
-            desired_steering_angle = target_heading - current_heading
-            index = len(path)-1
-        if desired_steering_angle > math.pi:
-            desired_steering_angle -= 2 * math.pi
-        elif desired_steering_angle < -math.pi:
-            desired_steering_angle += 2 * math.pi
-        if desired_steering_angle > math.pi/6 or desired_steering_angle < -math.pi/6:
-            sign = 1 if desired_steering_angle > 0 else -1
-            desired_steering_angle = sign * math.pi/4
-            v = 0.0
-        return v,desired_steering_angle,index
+            self.show_path(self.pursuit_path)
             
     def distance_angle_to_world(self, distance, angle):
         T = self.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom')
@@ -349,6 +335,31 @@ class DetectionNode_OpenVino(Node):
         self.rgb_detection_pub.publish(self.bridge.cv2_to_imgmsg(rgb_img, encoding="rgb8"))
         self.depth_detection_pub.publish(self.bridge.cv2_to_imgmsg(depth_img, encoding="passthrough"))
         self.rgb_keypoints_list = []; self.depth_keypoints_list = []
+
+    def show_path(self, pursuit_path) :
+
+        # publish planned plan for visualization
+        path_msg = Path()
+        path_msg.header.frame_id = "odom"
+        pose = PoseStamped()
+        pose.header.frame_id = "odom"
+        pose.pose.position.x = float(self.x)
+        pose.pose.position.y = float(self.y)
+        pose.pose.orientation.w = 1.0
+        path_msg.poses.append(pose)
+
+        for point in pursuit_path:
+            pose = PoseStamped()
+            pose.header.frame_id = "odom"
+            pose.pose.position.x = float(point[0])
+            pose.pose.position.y = float(point[1])
+            pose.pose.position.z = float(point[2])
+            pose.pose.orientation.x = 0.0
+            pose.pose.orientation.y = 0.0
+            pose.pose.orientation.z = 0.0
+            pose.pose.orientation.w = 1.0
+            path_msg.poses.append(pose)
+        self.path_pub.publish(path_msg)
 
 
 def main(args): # COMPLETED
