@@ -54,9 +54,12 @@ install(
   PROGRAMS
   scripts/FRONTEND/detect_node.py
   scripts/FRONTEND/detect_node_openvino.py
+  scripts/FRONTEND/detect_node_tensorRT.py
   scripts/FRONTEND/detector.py
   scripts/FRONTEND/detector_openvino.py
+  scripts/FRONTEND/detector_tensorRT.py
   scripts/FRONTEND/measurement3d_2d.py
+  scripts/FRONTEND/common.py
   scripts/FRONTEND/pure_pursuit.py
   scripts/BACKEND/slam_node.py
   scripts/BACKEND/EKF.py
@@ -69,6 +72,9 @@ install(
   scripts/MODELS/model.bin
   scripts/MODELS/model.xml
   scripts/MODELS/model.onnx
+  scripts/MODELS/engine_fp16.trt
+  scripts/MODELS/engine_new.trt
+  scripts/MODELS/engine_int8.trt
   DESTINATION lib/${PROJECT_NAME}
 )
 
