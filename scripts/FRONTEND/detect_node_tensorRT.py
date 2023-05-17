@@ -8,7 +8,7 @@ import time
 from detector_tensorRT import detection_model_tensorRT
 from std_msgs.msg import String
 from std_msgs.msg import Float32MultiArray
-from sensor_msgs.msg import Image, CompressedImage
+from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from nav_msgs.msg import Odometry, Path
 from cv_bridge import CvBridge, CvBridgeError
 from measurement3d_2d import compute_line, compute_projected_point, compute_measurements
@@ -17,7 +17,7 @@ from tf2_ros.transform_listener import TransformListener
 from tf2_ros.buffer import Buffer
 from tf_transformations import quaternion_matrix, quaternion_about_axis
 from geometry_msgs.msg import Twist, PoseStamped
-from pure_pursuit import pure_pursuit
+from pure_pursuit import pure_pursuit, bspline_planning
 
  
 # Importing Visualization UTILS
@@ -62,6 +62,8 @@ class DetectionNode_TensorRT(Node):
         self.bridge = CvBridge()
         # Subscription to both RGB and DEPTH images
         self.rgb_sub = self.create_subscription(CompressedImage, rgb_topic, self.rgb_callback, 1)
+        self.rgbinfo_sub = self.create_subscription(CameraInfo, '/camera/color/camera_info', self.rgb_info_cb, 1)
+        self.depthinfo_sub = self.create_subscription(CameraInfo, '/camera/depth/camera_info', self.depth_info_cb, 1)
         self.odom_sub = self.create_subscription(Odometry,'/tractor_nh_t4_110f/odom',self.info_callback,10)
         self.depth_sub = self.create_subscription(Image, depth_topic, self.depth_callback, 1) # real robot
         # Synchronous routine for computing measruments
@@ -108,8 +110,6 @@ class DetectionNode_TensorRT(Node):
                                  [0.0, self.fy_depth, self.cy_depth],
                                  [0.0, 0.0, 1.0]])
 
-        self.camera_wrt_base_link = np.array([0.4, 0, 0.1])
-
         self.rgb2depth = self.depth_M@np.linalg.pinv(self.rgb_M)
         self.counter = 0
         self.path = []
@@ -118,6 +118,12 @@ class DetectionNode_TensorRT(Node):
         self.no_detection_count = 0
         self.change_lane = False
         self.prev_path = []
+        self.lane_change_path = []
+        self.forbidden_path = []
+        self.display_path = []
+        self.forbidden_x = None
+        self.i = 0
+        self.direction = True
 
     def rgb_callback(self, data): # COMPLETED
         '''
@@ -141,6 +147,47 @@ class DetectionNode_TensorRT(Node):
         except CvBridgeError as e:
             print(e)
 
+    def rgb_info_cb(self, data): # COMPLETED
+        '''
+        Callback used to store the most recent RGB image
+        '''
+        self.rgb_K = data.k
+        # print(self.rgb_K)
+        self.fx_rgb = self.rgb_K[0]
+        self.fy_rgb = self.rgb_K[4]
+        self.cx_rgb = self.rgb_K[2]
+        self.cy_rgb = self.rgb_K[5]
+
+        self.rgb_M = np.array([[self.fx_rgb, 0.0, self.cx_rgb],
+                               [0.0, self.fy_rgb, self.cy_rgb],
+                               [0.0, 0.0, 1.0]])
+
+        self.depth_M = np.array([[self.fx_depth, 0.0, self.cx_depth],
+                                 [0.0, self.fy_depth, self.cy_depth],
+                                 [0.0, 0.0, 1.0]])
+
+        self.rgb2depth = self.depth_M@np.linalg.pinv(self.rgb_M)
+
+    def depth_info_cb(self, data): # COMPLETED
+        '''
+        Callback used to store the most recent RGB image
+        '''
+        self.depth_K = data.k
+        self.fx_depth = self.depth_K[0]
+        self.fy_depth = self.depth_K[4]
+        self.cx_depth = self.depth_K[2]
+        self.cy_depth = self.depth_K[5]
+
+        self.rgb_M = np.array([[self.fx_rgb, 0.0, self.cx_rgb],
+                               [0.0, self.fy_rgb, self.cy_rgb],
+                               [0.0, 0.0, 1.0]])
+
+        self.depth_M = np.array([[self.fx_depth, 0.0, self.cx_depth],
+                                 [0.0, self.fy_depth, self.cy_depth],
+                                 [0.0, 0.0, 1.0]])
+
+        self.rgb2depth = self.depth_M@np.linalg.pinv(self.rgb_M)
+
     def info_callback(self, msg):
         self.x = msg.pose.pose.position.x
         self.y = msg.pose.pose.position.y
@@ -163,7 +210,7 @@ class DetectionNode_TensorRT(Node):
         # print("BEFORE INSTANCE")
         # Execute inference with the DL model for deteting tree trunk keyoints
         time1 = time.time()
-        outputs_pred = self.DL_MODEL.infer(rgb_img)
+        outputs_pred = self.DL_MODEL.infer(rgb_img, self.rgb_img_shape)
         print("inference time", time.time() - time1, "s")
         keypoint_results = outputs_pred.cpu().detach().numpy()
         # Iterate over the instances 
@@ -214,6 +261,7 @@ class DetectionNode_TensorRT(Node):
                     if angle_y[0, 0] < self.inclination_th:
                         # Publish Measurment to SLAM node
                         T1 = self.get_transform('base_link', 'odom')
+                        # T1 = self.visualizer.get_transform('base_link', 'odom', self.tf_buffer)
                         _, _ , yaw = euler_from_matrix(T1[0:3, 0:3])
                         self.measurement_msg.data = [distance, angle+yaw]
                         self.measurement_pub.publish(self.measurement_msg)
@@ -261,45 +309,94 @@ class DetectionNode_TensorRT(Node):
         for point in self.final_path:
             self.visualizer.draw_point(np.array([point]).T)
             abs_dist = abs(point[0] - self.x)
-            if abs_dist < self.dist_rows / 2.0:
+            if abs_dist < self.dist_rows / 2.0 and point[0] not in self.forbidden_path:
                 self.pursuit_path.append(point)
+                self.forbidden_x = point[0]
 
-        self.pursuit_path.sort(key=lambda x: x[1])
+        if self.direction:
+            self.pursuit_path.sort(key=lambda x: x[1])
+        else:
+            self.pursuit_path.sort(key=lambda x: x[1], reverse=True)
         
         # self.pursuit_path = np.array(self.pursuit_path)
-        self.i = 0
+        # self.i = 0
         twist = Twist()
-        if len(self.pursuit_path) > 0:
+        if self.change_lane == True:
+            self.display_path = self.lane_change_path
+            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.lane_change_path,self.i, 0.3)
+            if(abs(self.x - self.lane_change_path[-1][0]) < 0.05 and abs(self.y - self.lane_change_path[-1][1])< 0.05):
+                self.change_lane = False
+                self.direction = not self.direction
+                self.i = 0
+                twist.linear.x = 0.0
+                twist.angular.z = 0.0
+            self.publisher.publish(twist)
+        elif len(self.pursuit_path) > 0:
+            # self.direction = self.y < self.pursuit_path[-1][1]
+            self.display_path = self.pursuit_path
             self.no_detection_count = 0
-            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.pursuit_path,self.i)
+            self.change_lane = False
+            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.pursuit_path,self.i, 0.3)
             if(abs(self.x - self.pursuit_path[-1][0]) < 0.05 and abs(self.y - self.pursuit_path[-1][1])< 0.05):
+                self.i = 0
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
             self.publisher.publish(twist)
             self.prev_path = self.pursuit_path
-        else:
-            self.no_detection_count = self.no_detection_count + 1
-            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.prev_path,self.i)
+        elif len(self.prev_path) > 0 and self.change_lane == False:
+            self.display_path = self.prev_path
+            # self.no_detection_count = self.no_detection_count + 1
+            twist.linear.x , twist.angular.z,self.i = pure_pursuit(self.x,self.y,self.yaw,self.prev_path,self.i, 0.3)
             if(abs(self.x - self.prev_path[-1][0]) < 0.05 and abs(self.y - self.prev_path[-1][1])< 0.05):
                 self.change_lane = True
+                # self.direction = not self.direction
+                self.lane_change_path = self.generate_lane_change_path()
+                self.i = 0
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
             self.publisher.publish(twist)
-
-        if self.no_detection_count > 6 and self.change_lane == True:
+        else:
             twist = Twist()
-            twist.linear.x = 0.5
-            twist.angular.z = 1.0
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
             self.publisher.publish(twist)
+        # if self.change_lane == True:
+        #     self.no_detection_count = self.no_detection_count + 1
+        #     twist = Twist()
+        #     twist.linear.x = 1.0
+        #     twist.angular.z = 0.0
+        #     self.publisher.publish(twist)
+
+        # if self.no_detection_count > 5 and self.change_lane == True:
+        #     twist = Twist()
+        #     twist.linear.x = 0.1
+        #     twist.angular.z = 1.0
+        #     self.publisher.publish(twist)
+        #     if self.forbidden_x is not None and self.forbidden_x not in self.forbidden_path:
+        #         self.forbidden_path.append(self.forbidden_x)
 
         if self.display_enabled:
             # Show estimated tree trunk keypoints
             self.show_keypoints(rgb_img, depth_img)
-            self.show_path(self.pursuit_path)
+            self.show_path(self.display_path)
+
+    def generate_lane_change_path(self):
+        y_delta = self.dist_rows
+        if self.direction == False:
+            y_delta = y_delta * -1
+        path = np.array([[self.prev_path[-1][0] - 2.0 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 3.0],
+                        #  [self.prev_path[-1][0] + 1.5 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 1.75],
+                         [self.prev_path[-1][0] + 3.0 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 3.0],
+                        #  [self.prev_path[-1][0] + 3.0 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 2.25], 
+                         [self.prev_path[-1][0] + 4.0 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 2.75],
+                         [self.prev_path[-1][0] + 4.0 * self.dist_rows / 4.0, self.prev_path[-1][1] + y_delta * 2.0]])
+        return path
             
     def distance_angle_to_world(self, distance, angle):
         T = self.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom')
         T1 = self.get_transform('base_link', 'odom')
+        # T = self.visualizer.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom', self.tf_buffer)
+        # T1 = self.visualizer.get_transform('base_link', 'odom', self.tf_buffer)
         _, _ , yaw = euler_from_matrix(T1[0:3, 0:3])
         lx = T[0, 3] + (distance)*np.cos(angle + yaw)
         ly = T[1, 3] + (distance)*np.sin(angle + yaw)
@@ -337,9 +434,13 @@ class DetectionNode_TensorRT(Node):
 
         T = self.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom')
         T1 = self.get_transform('base_link', 'odom')
+        # T = self.visualizer.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom', self.tf_buffer)
+        # T1 = self.visualizer.get_transform('base_link', 'odom', self.tf_buffer)
         _, _ , yaw = euler_from_matrix(T1[0:3, 0:3])
-        lx = T[0, 3] + (distance)*np.cos(angle + yaw)
-        ly = T[1, 3] + (distance)*np.sin(angle + yaw) 
+        sign = 1
+        # print("cylinder3Dvis", T[0, 3], T[1, 3], distance, angle, yaw)
+        lx = sign * T[0, 3] + (distance)*np.cos(angle + yaw)
+        ly = sign * T[1, 3] + (distance)*np.sin(angle + yaw) 
         self.visualizer.draw_cylinder(np.asarray([[lx],[ly]]))
 
     def show_keypoints(self, rgb_img, depth_img) :
@@ -375,7 +476,7 @@ class DetectionNode_TensorRT(Node):
             pose.header.frame_id = "odom"
             pose.pose.position.x = float(point[0])
             pose.pose.position.y = float(point[1])
-            pose.pose.position.z = float(point[2])
+            pose.pose.position.z = 0.0
             pose.pose.orientation.x = 0.0
             pose.pose.orientation.y = 0.0
             pose.pose.orientation.z = 0.0

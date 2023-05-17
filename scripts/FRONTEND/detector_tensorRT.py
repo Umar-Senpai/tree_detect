@@ -28,14 +28,14 @@ class detection_model_tensorRT:
         # Load TRT engine
         self.logger = trt.Logger(trt.Logger.ERROR)
         trt.init_libnvinfer_plugins(self.logger, namespace="")
-        print("HERE")
+
         with open(engine_path, "rb") as f, trt.Runtime(self.logger) as runtime:
-            print("HERE")
+    
             assert runtime
-            print("HERE")
+    
             self.engine = runtime.deserialize_cuda_engine(f.read())
         assert self.engine
-        print("HERE")
+
         self.context = self.engine.create_execution_context()
         assert self.context
 
@@ -158,7 +158,7 @@ class detection_model_tensorRT:
             return tensors[0]
         return torch.cat(tensors, dim)
 
-    def infer(self, rgb_image):
+    def infer(self, rgb_image, rgb_img_shape):
         """
         Execute inference on a batch of images. The images should already be batched and preprocessed, as prepared by
         the ImageBatcher class. Memory copying to and from the GPU device will be performed here.
@@ -185,23 +185,24 @@ class detection_model_tensorRT:
         scores = outputs[2]
         masks = outputs[4]
         confidence_len = sum(i > self.confidence for i in scores[0])
-        # boxes = boxes.clip(0, 800)
+        # boxes = boxes.clip(0, rgb_img_shape[1])
         for n in range(confidence_len):
             scale_y = self.inputs[0]['shape'][3]
             scale_x = self.inputs[0]['shape'][2]
+            # print(scale_x, scale_y, rgb_img_shape)
             # Append to detections
             t1 = boxes[0][n][1] * scale_x
             t2 = boxes[0][n][0] * scale_y
             t3 = boxes[0][n][3] * scale_x
             t4 = boxes[0][n][2] * scale_y
-            if t2 > 1280:
-              t2 = 1280
-            if t4 > 1280:
-              t4 = 1280
-            if t1 > 800:
-              t1 = 800
-            if t3 > 800:
-              t3 = 800
+            if t2 > rgb_img_shape[1]:
+              t2 = rgb_img_shape[1]
+            if t4 > rgb_img_shape[1]:
+              t4 = rgb_img_shape[1]
+            if t1 > rgb_img_shape[0]:
+              t1 = rgb_img_shape[0]
+            if t3 > rgb_img_shape[0]:
+              t3 = rgb_img_shape[0]
             boxes[0][n][0] = t2
             boxes[0][n][1] = t1
             boxes[0][n][2] = t4
