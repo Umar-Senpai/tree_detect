@@ -25,11 +25,14 @@ def compute_line(points):
     return points[[0], :].T, d.reshape(3, 1)
 
 def compute_projected_point(p0, d):
+    # p0 = origin - p0 = -p0
+    # https://gamedev.stackexchange.com/questions/72528/how-can-i-project-a-3d-point-onto-a-3d-line AP = -p0 AB=d dot(ab, ab) = |ab|^2 
+    # https://xaktly.com/VectorProjections.html
     t_projected = (-(p0.T)@d/(np.linalg.norm(d, ord=2) ** 2))
     return (p0 + t_projected*d).T
 
 def compute_measurements(projected_point, d):
-
+    # Distance from origin (0,0,0) to project point -> perpendicular distance equal to norm of projected point
     distance = np.linalg.norm(projected_point)
     # modify accroding to how the camera is positiooned
     # The one used for the measurement model considers the ZX plane for

@@ -55,6 +55,7 @@ install(
   scripts/FRONTEND/detect_node.py
   scripts/FRONTEND/detect_node_openvino.py
   scripts/FRONTEND/detect_node_tensorRT.py
+  scripts/FRONTEND/detect_node_tensorRT_real.py
   scripts/FRONTEND/detector.py
   scripts/FRONTEND/detector_openvino.py
   scripts/FRONTEND/detector_tensorRT.py
@@ -75,6 +76,8 @@ install(
   scripts/MODELS/engine_fp16.trt
   scripts/MODELS/engine_new.trt
   scripts/MODELS/engine_int8.trt
+  scripts/MODELS/engine_real.trt
+  scripts/MODELS/engine_real_int8.trt
   DESTINATION lib/${PROJECT_NAME}
 )
 

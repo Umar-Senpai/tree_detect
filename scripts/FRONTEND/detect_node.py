@@ -215,7 +215,7 @@ class DetectionNode(Node):
 
         T = self.get_transform('oakd_camera_rgb_camera_optical_frame', 'odom')
         T1 = self.get_transform('base_link', 'odom')
-        print("---", T1[0:2, 3])
+        # print("---", T1[0:2, 3])
         _, _ , yaw = euler_from_matrix(T1[0:3, 0:3])
         lx = T[0, 3] + (distance)*np.cos(angle + yaw)
         ly = T[1, 3] + (distance)*np.sin(angle + yaw) 
